@@ -6,53 +6,52 @@ import registerPixelHandlers from "./sockets/pixelHandler.js";
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: "*" } });
 
+// CORS ayarlarını production için biraz daha spesifik tutabilirsin
+const io = new Server(httpServer, { 
+  cors: { origin: "*" },
+  transports: ['websocket', 'polling'] // Bağlantı stabilitesi için
+});
+
+// Başlangıçta tuvali hazırla
 await canvasService.init();
 
-// Yardımcı fonksiyon: Herkese güncel sayıyı fırlatır
 const broadcastUserCount = () => {
   const count = io.engine.clientsCount;
   io.emit('user_count', count);
-  console.log(`👥 Aktif kullanıcı sayısı yayınlandı: ${count}`);
 };
 
-
 io.on("connection", async (socket) => {
-  console.log(`✨ User connected: ${socket.id}`);
-  
-
-  // 1. BAĞLANIR BAĞLANMAZ: Herkese (ve yeni gelene) sayıyı bildir
+  // Yeni bağlanan için hemen sayıyı güncelle
   broadcastUserCount();
 
-  // Frontend tuval verisini istediğinde (bu, frontend'in hazır olduğunu kanıtlar)
   socket.on("request_canvas", async () => {
     try {
       const currentCanvas = await canvasService.getCanvas();
-      socket.emit("init_canvas", currentCanvas);
-      
-      // 2. GARANTİ OLSUN: Tuval verisiyle beraber kullanıcı sayısını tekrar gönder
-      socket.emit('user_count', io.engine.clientsCount);
-      
-      console.log(`📤 Initial canvas sent to: ${socket.id}`);
+      if (currentCanvas) {
+        socket.emit("init_canvas", currentCanvas);
+        // Garanti olsun diye tekrar sayı gönder
+        socket.emit('user_count', io.engine.clientsCount);
+      }
     } catch (err) {
-      console.error("❌ Veri gönderim hatası:", err);
+      console.error("📤 Tuval gönderim hatası:", err);
     }
   });
 
+  // Handler'ı bağla
   registerPixelHandlers(io, socket);
 
   socket.on("disconnect", () => {
-    console.log(`👋 User disconnected: ${socket.id}`);
-    // 3. AYRILMA ANINDA: Herkese yeni sayıyı bildir
     broadcastUserCount();
   });
 });
 
-const PORT = 3000;
+// Global hata yakalayıcı (Server'ın kapanmasını önler)
+process.on('uncaughtException', (err) => {
+  console.error('🔥 Kritik Hata (Uncaught):', err);
+});
 
+const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server ayağa kalktı!`);
-  console.log(`🏠 Local: http://localhost:${PORT}`);
-  console.log(`🌐 Network: http://192.168.1.106:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
