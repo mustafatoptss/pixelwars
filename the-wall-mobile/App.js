@@ -13,6 +13,7 @@ import { Paintbrush } from "lucide-react-native";
 
 // 1. ADIM: Yazdığımız CanvasView'ı içeri aktar kanka
 import CanvasView from "./src/components/CanvasView";
+import GridBackground from "./src/components/GridBackground";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 export default function App() {
@@ -40,17 +41,20 @@ export default function App() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator color="#3B82F6" />
+        <GridBackground />
+        <ActivityIndicator color="#ff006e" size="large" />
       </View>
     );
   }
 
-  // GİRİŞ EKRANI (Aynı kalıyor)
+  // GİRİŞ EKRANI (Grid background ekledim)
   if (!nickname) {
     return (
       <View style={styles.container}>
+        <GridBackground />
+        
         <View style={styles.header}>
-          <Paintbrush color="#3B82F6" size={48} strokeWidth={1.5} />
+          <Paintbrush color="#ff006e" size={48} strokeWidth={2} />
           <Text style={styles.title}>THE WALL</Text>
           <Text style={styles.subtitle}>v1.0.0-stable</Text>
         </View>
@@ -59,7 +63,7 @@ export default function App() {
           <TextInput
             style={styles.input}
             placeholder="Takma adını belirle..."
-            placeholderTextColor="#64748b"
+            placeholderTextColor="#333333"
             value={tempName}
             onChangeText={setTempName}
             maxLength={15}
@@ -76,14 +80,13 @@ export default function App() {
     );
   }
 
-  // 2. ADIM: BURAYI DEĞİŞTİRİYORUZ
-  // Artık placeholder yazı yerine gerçek Canvas'ı çağırıyoruz.
+  // 2. ADIM: Canvas ekranı
   return (
     <GestureHandlerRootView>
-      <View style={{ flex: 1, backgroundColor: "#0f172a" }}>
+      <View style={{ flex: 1, backgroundColor: "#0a0a0a"}}>
         <CanvasView nickname={nickname} />
 
-        {/* Test için ismini sıfırlama butonu alt kısımda kalsın */}
+        {/* Temaya uyumlu debug butonu */}
         <TouchableOpacity
           onPress={() => {
             AsyncStorage.clear();
@@ -91,7 +94,7 @@ export default function App() {
           }}
           style={styles.debugBtn}
         >
-          <Text style={{ color: "#475569", fontSize: 10 }}>İSMİ SIFIRLA</Text>
+          <Text style={styles.debugBtnText}>CHANGE NAME</Text>
         </TouchableOpacity>
       </View>
     </GestureHandlerRootView>
@@ -99,68 +102,112 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  // Mevcut stillerine sadece bunu ekleyebilirsin
   debugBtn: {
     position: "absolute",
     bottom: 20,
     alignSelf: "center",
-    padding: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: "#0f0f0f",
+    borderWidth: 2,
+    borderColor: "#333333",
+    borderRadius: 0,
   },
+  
+  debugBtnText: {
+    color: "#666666",
+    fontSize: 10,
+    fontWeight: "900",
+    fontFamily: "monospace",
+    letterSpacing: 2,
+  },
+  
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#0a0a0a",
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
   },
+  
   header: {
     alignItems: "center",
-    marginBottom: 40,
+    marginBottom: 50,
+    zIndex: 1,
   },
+  
   title: {
-    color: "#f8fafc",
-    fontSize: 32,
-    fontWeight: "bold",
-    letterSpacing: 4,
+    color: "#ff006e",
+    fontSize: 40,
+    fontWeight: "900",
+    letterSpacing: 5,
     marginTop: 10,
+    fontFamily: "monospace",
+    textShadowColor: "#ff006e",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 15,
   },
+  
   subtitle: {
-    color: "#64748b",
-    fontSize: 12,
-    letterSpacing: 2,
+    color: "#666666",
+    fontSize: 11,
+    letterSpacing: 3,
+    fontFamily: "monospace",
+    fontWeight: "bold",
+    marginTop: 8,
   },
+  
   inputCard: {
     width: "100%",
-    backgroundColor: "#1e293b",
-    padding: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#334155",
+    backgroundColor: "#0f0f0f",
+    padding: 28,
+    borderRadius: 0,
+    borderWidth: 2,
+    borderColor: "#1a1a1a",
+    zIndex: 1,
   },
+  
   input: {
-    color: "#f8fafc",
-    borderBottomWidth: 1,
-    borderBottomColor: "#334155",
-    paddingVertical: 10,
+    color: "#ffffff",
+    borderBottomWidth: 2,
+    borderBottomColor: "#333333",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     fontSize: 18,
-    marginBottom: 20,
+    marginBottom: 28,
     textAlign: "center",
-  },
-  button: {
-    backgroundColor: "#f8fafc",
-    padding: 15,
-    borderRadius: 4,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#0f172a",
+    fontFamily: "monospace",
     fontWeight: "bold",
-    letterSpacing: 1,
+    backgroundColor: "#0a0a0a",
   },
+  
+  button: {
+    backgroundColor: "#ff006e",
+    padding: 18,
+    borderRadius: 0,
+    alignItems: "center",
+    borderWidth: 0,
+    shadowColor: "#ff006e",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+  },
+  
+  buttonText: {
+    color: "#ffffff",
+    fontWeight: "900",
+    letterSpacing: 3,
+    fontSize: 16,
+    fontFamily: "monospace",
+  },
+  
   footerNote: {
-    color: "#475569",
-    fontSize: 11,
+    color: "#666666",
+    fontSize: 10,
     position: "absolute",
     bottom: 40,
+    fontFamily: "monospace",
+    letterSpacing: 2,
+    zIndex: 1,
   },
 });

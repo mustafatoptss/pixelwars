@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -15,6 +15,11 @@ import socket from "../services/socket";
 import { COLOR_PALETTE } from "../constants/colors";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+// --- KONTEYNER BOYUTLARI (SABİT) ---
+const CONTAINER_WIDTH = SCREEN_WIDTH - 40;
+const CONTAINER_HEIGHT = SCREEN_HEIGHT * 0.55;
+
 const CANVAS_SIZE = 100;
 const COOLDOWN_TIME = 10;
 const BASE_PIXEL_SIZE = 28;
@@ -29,59 +34,60 @@ export default function CanvasView({ nickname }) {
   const [viewOffset, setViewOffset] = useState({ x: 10, y: 10 });
   const [scale, setScale] = useState(1.0);
 
+  const startOffset = useRef({ x: 10, y: 10 });
+  const startScale = useRef(1.0);
+
   // --- DİNAMİK HESAPLAMALAR ---
   const currentPixelSize = BASE_PIXEL_SIZE * scale;
-  const visibleCols = Math.floor(SCREEN_WIDTH / currentPixelSize);
-  const visibleRows = Math.floor((SCREEN_HEIGHT * 0.55) / currentPixelSize);
-  const canvasPxWidth = currentPixelSize * visibleCols;
-  const canvasPxHeight = currentPixelSize * visibleRows;
 
-  // --- 🖐️ GESTURE HANDLER (ZOOM + PAN) ---
+  // Piksellerin kutuyu tam doldurması için konteyner boyutlarını baz alıyoruz
+  const visibleCols = Math.ceil(CONTAINER_WIDTH / currentPixelSize);
+  const visibleRows = Math.ceil(CONTAINER_HEIGHT / currentPixelSize);
 
-  // 1. Kaydırma (Pan)
+  // --- 🖐️ GESTURE HANDLER ---
+
   const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      startOffset.current = { x: viewOffset.x, y: viewOffset.y };
+    })
     .onUpdate((e) => {
       const deltaX = Math.round(e.translationX / currentPixelSize);
       const deltaY = Math.round(e.translationY / currentPixelSize);
 
-      // Sadece belli bir eşiği geçince state güncelle (performans için)
-      if (Math.abs(deltaX) >= 1 || Math.abs(deltaY) >= 1) {
-        setViewOffset((prev) => {
-          let newX = Math.max(
-            0,
-            Math.min(
-              CANVAS_SIZE - visibleCols,
-              prev.x - (e.velocityX > 0 ? 1 : -1),
-            ),
-          );
-          let newY = Math.max(
-            0,
-            Math.min(
-              CANVAS_SIZE - visibleRows,
-              prev.y - (e.velocityY > 0 ? 1 : -1),
-            ),
-          );
-          return { x: newX, y: newY };
-        });
+      // Sınırları visibleCols/Rows'a göre hesapla ki dışarı taşmasın veya siyahlık kalmasın
+      const newX = Math.max(
+        0,
+        Math.min(CANVAS_SIZE - visibleCols, startOffset.current.x - deltaX),
+      );
+      const newY = Math.max(
+        0,
+        Math.min(CANVAS_SIZE - visibleRows, startOffset.current.y - deltaY),
+      );
+
+      if (newX !== viewOffset.x || newY !== viewOffset.y) {
+        setViewOffset({ x: newX, y: newY });
       }
     })
     .runOnJS(true);
 
-  // 2. İki Parmak Zoom (Pinch)
   const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      startScale.current = scale;
+    })
     .onUpdate((e) => {
-      const newScale = scale * e.scale;
-      // Zoom sınırları: 0.4x - 4.0x
-      if (newScale >= 0.4 && newScale <= 4.0) {
+      const newScale = Math.max(
+        0.4,
+        Math.min(4.0, startScale.current * e.scale),
+      );
+      if (newScale !== scale) {
         setScale(newScale);
       }
     })
     .runOnJS(true);
 
-  // İkisini birleştir
   const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
 
-  // --- SOCKET & TIMER (Aynı) ---
+  // --- SOCKET & TIMER ---
   useEffect(() => {
     socket.emit("request_canvas");
     socket.on("init_canvas", (data) => setCanvasData(new Uint8Array(data)));
@@ -112,10 +118,14 @@ export default function CanvasView({ nickname }) {
   const visiblePoints = useMemo(() => {
     if (!canvasData) return [];
     const groups = new Map();
-    for (let row = 0; row < visibleRows; row++) {
-      for (let col = 0; col < visibleCols; col++) {
+
+    // visibleRows ve visibleCols kadar dönerek pikselleri yerleştiriyoruz
+    // +1 ekleyerek tam sığmayan piksellerin yarım kalmasını önlüyoruz
+    for (let row = 0; row <= visibleRows; row++) {
+      for (let col = 0; col <= visibleCols; col++) {
         const canvasX = viewOffset.x + col;
         const canvasY = viewOffset.y + row;
+
         if (canvasX < CANVAS_SIZE && canvasY < CANVAS_SIZE) {
           const colorIndex = canvasData[canvasY * CANVAS_SIZE + canvasX] || 0;
           if (!groups.has(colorIndex)) groups.set(colorIndex, []);
@@ -130,11 +140,12 @@ export default function CanvasView({ nickname }) {
       color: COLOR_PALETTE[idx] || "#FFFFFF",
       points: pts,
     }));
-  }, [canvasData, viewOffset, scale]);
+  }, [canvasData, viewOffset, scale, visibleCols, visibleRows]);
 
   const handlePaint = (event) => {
     if (timeLeft > 0) return;
     const { locationX, locationY } = event.nativeEvent;
+
     const col = Math.floor(locationX / currentPixelSize);
     const row = Math.floor(locationY / currentPixelSize);
     const canvasX = viewOffset.x + col;
@@ -174,11 +185,10 @@ export default function CanvasView({ nickname }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* ÜST HUD */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.brandTitle}>PİXEL WAR</Text>
-          <Text style={styles.statusText}>{onlineCount} NODES ONLINE</Text>
+          <Text style={styles.brandTitle}>THE WALL</Text>
+          <Text style={styles.statusText}>{onlineCount} ONLINE</Text>
         </View>
         <View style={[styles.timerBadge, timeLeft > 0 && styles.timerActive]}>
           <Text style={styles.timerText}>
@@ -194,21 +204,17 @@ export default function CanvasView({ nickname }) {
         <Text style={styles.metricsText}>ZOOM: {Math.round(scale * 100)}%</Text>
       </View>
 
-      {/* GESTURE DETECTOR WRAPPER */}
       <View style={styles.canvasFrame}>
         <GestureDetector gesture={composedGesture}>
           <View
             style={[
               styles.canvasWrapper,
-              { width: canvasPxWidth + 2, height: canvasPxHeight + 2 },
+              { width: CONTAINER_WIDTH, height: CONTAINER_HEIGHT },
             ]}
             onStartShouldSetResponder={() => true}
             onResponderRelease={handlePaint}
           >
-            <Canvas
-              style={{ width: canvasPxWidth, height: canvasPxHeight }}
-              pointerEvents="none"
-            >
+            <Canvas style={{ flex: 1 }} pointerEvents="none">
               {visiblePoints.map((group, idx) => (
                 <Points
                   key={idx}
@@ -223,7 +229,6 @@ export default function CanvasView({ nickname }) {
         </GestureDetector>
       </View>
 
-      {/* ALT PALET */}
       <View style={styles.dock}>
         <ScrollView
           horizontal
@@ -249,193 +254,93 @@ export default function CanvasView({ nickname }) {
     </SafeAreaView>
   );
 }
-//styles
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0f0f23",
-  },
-
+  container: { flex: 1, backgroundColor: "#0a0a0a" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     padding: 20,
-    backgroundColor: "#1a1a2e",
-    borderBottomWidth: 4,
-    borderBottomColor: "#6a4c93",
-    borderTopWidth: 2,
-    borderTopColor: "#16213e",
+    backgroundColor: "#0f0f0f",
+    borderBottomWidth: 3,
+    borderBottomColor: "#ff006e",
   },
-
   brandTitle: {
-    color: "#ff6b9d",
-    fontSize: 22,
+    color: "#ff006e",
+    fontSize: 24,
     fontWeight: "900",
     fontFamily: "monospace",
-    textShadowColor: "#c9184a",
-    textShadowOffset: { width: 3, height: 3 },
-    textShadowRadius: 0,
-    letterSpacing: 2,
+    letterSpacing: 3,
   },
-
   statusText: {
-    color: "#4ecdc4",
+    color: "#0bd10eff",
     fontSize: 10,
     fontFamily: "monospace",
-    letterSpacing: 1,
-    textShadowColor: "#1a535c",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
+    fontWeight: "bold",
   },
-
   timerBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#16213e",
-    borderWidth: 4,
-    borderColor: "#0f0f23",
-    borderBottomWidth: 6,
-    borderRightWidth: 6,
-    borderTopColor: "#6a4c93",
-    borderLeftColor: "#6a4c93",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: "#1a1a1a",
+    borderWidth: 2,
+    borderColor: "#333333",
   },
-
-  timerActive: {
-    backgroundColor: "#f72585",
-    borderColor: "#b5179e",
-    borderTopColor: "#ff8fab",
-    borderLeftColor: "#ff8fab",
-  },
-
+  timerActive: { borderColor: "#ff006e" },
   timerText: {
-    color: "#ffeaa7",
-    fontSize: 16,
+    color: "#ffffff",
+    fontSize: 14,
     fontWeight: "900",
     fontFamily: "monospace",
-    letterSpacing: 2,
-    textShadowColor: "#2d3436",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
   },
-
   metricsBar: {
     flexDirection: "row",
     justifyContent: "space-around",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: "#16213e",
-    borderBottomWidth: 3,
-    borderBottomColor: "#0f0f23",
-    borderTopWidth: 1,
-    borderTopColor: "#3a506b",
+    paddingVertical: 10,
+    backgroundColor: "#0a0a0a",
   },
-
   metricsText: {
-    color: "#74b9ff",
-    fontSize: 12,
+    color: "#666666",
+    fontSize: 11,
     fontFamily: "monospace",
     fontWeight: "bold",
-    letterSpacing: 1,
-    textShadowColor: "#0f0f23",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
   },
-
   canvasFrame: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0f0f23",
-    padding: 24,
-  },
-
-  canvasWrapper: {
-    backgroundColor: "#1a1a2e",
-    borderWidth: 6,
-    borderColor: "#6a4c93",
-    borderBottomWidth: 9,
-    borderRightWidth: 9,
-    borderTopColor: "#b185db",
-    borderLeftColor: "#b185db",
-    overflow: "hidden",
-    shadowColor: "#6a4c93",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 0,
-  },
-
-  dock: {
     padding: 20,
-    backgroundColor: "#1a1a2e",
-    borderTopWidth: 4,
-    borderTopColor: "#6a4c93",
-    borderBottomWidth: 2,
-    borderBottomColor: "#16213e",
   },
-
-  scrollContent: {
-    gap: 16,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  canvasWrapper: {
+    backgroundColor: "#000000",
+    borderWidth: 2,
+    borderColor: "#ff006e",
+    overflow: "hidden",
+    shadowColor: "#ff006e",
+    shadowRadius: 20,
+    shadowOpacity: 0.6,
   },
-
-  swatch: {
-    width: 52,
-    height: 52,
-    borderRadius: 0,
-    borderWidth: 4,
-    borderColor: "#0f0f23",
-    borderBottomWidth: 7,
-    borderRightWidth: 7,
-    borderTopColor: "#3a506b",
-    borderLeftColor: "#3a506b",
+  dock: {
+    padding: 16,
+    backgroundColor: "#0f0f0f",
+    borderTopWidth: 3,
+    borderTopColor: "#ff006e",
   },
-
-  swatchActive: {
-    borderWidth: 5,
-    borderColor: "#ffeaa7",
-    borderBottomWidth: 8,
-    borderRightWidth: 8,
-    borderTopColor: "#fdcb6e",
-    borderLeftColor: "#fdcb6e",
-    transform: [{ scale: 1.12 }],
-    shadowColor: "#ffeaa7",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 12,
-  },
-
+  scrollContent: { gap: 10, paddingHorizontal: 4, paddingVertical: 8 },
+  swatch: { width: 44, height: 44, borderWidth: 2, borderColor: "#1a1a1a" },
+  swatchActive: { borderColor: "#ff006e", transform: [{ scale: 1.1 }] },
   hintText: {
-    color: "#4ecdc4",
-    fontSize: 11,
+    color: "#666666",
+    fontSize: 9,
     textAlign: "center",
-    paddingVertical: 14,
-    backgroundColor: "#1a1a2e",
-    fontFamily: "monospace",
-    letterSpacing: 1.2,
-    fontWeight: "bold",
-    textShadowColor: "#0f0f23",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
+    paddingVertical: 12,
+    backgroundColor: "#0f0f0f",
   },
-
   loading: {
     flex: 1,
-    backgroundColor: "#0f0f23",
+    backgroundColor: "#0a0a0a",
     justifyContent: "center",
     alignItems: "center",
   },
-
-  loadingText: {
-    color: "#ff6b9d",
-    fontFamily: "monospace",
-    fontSize: 20,
-    fontWeight: "bold",
-    letterSpacing: 3,
-    textShadowColor: "#c9184a",
-    textShadowOffset: { width: 4, height: 4 },
-    textShadowRadius: 0,
-  },
+  loadingText: { color: "#ff006e", fontSize: 18, fontWeight: "bold" },
 });
