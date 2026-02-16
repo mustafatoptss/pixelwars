@@ -13,6 +13,7 @@ import { Canvas, Points } from "@shopify/react-native-skia";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import socket from "../services/socket";
 import { COLOR_PALETTE } from "../constants/colors";
+import LeaderBoard from "./LeaderBoard";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -24,7 +25,7 @@ const CANVAS_SIZE = 100;
 const COOLDOWN_TIME = 10;
 const BASE_PIXEL_SIZE = 28;
 
-export default function CanvasView({ nickname }) {
+export default function CanvasView({ nickname, userId }) {
   const [canvasData, setCanvasData] = useState(null);
   const [selectedColor, setSelectedColor] = useState(2);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -171,6 +172,7 @@ export default function CanvasView({ nickname }) {
       y: canvasY,
       colorIndex: selectedColor,
       nickname,
+      userId,
     });
   };
 
@@ -190,11 +192,14 @@ export default function CanvasView({ nickname }) {
           <Text style={styles.brandTitle}>THE WALL</Text>
           <Text style={styles.statusText}>{onlineCount} ONLINE</Text>
         </View>
+      <View style={{marginLeft:50}}><LeaderBoard socket={socket} /></View>
         <View style={[styles.timerBadge, timeLeft > 0 && styles.timerActive]}>
           <Text style={styles.timerText}>
             {timeLeft > 0 ? `WAIT: ${timeLeft}s` : "READY"}
           </Text>
+          
         </View>
+        
       </View>
 
       <View style={styles.metricsBar}>
@@ -330,6 +335,7 @@ const styles = StyleSheet.create({
   swatch: { width: 44, height: 44, borderWidth: 2, borderColor: "#1a1a1a" },
   swatchActive: { borderColor: "#ff006e", transform: [{ scale: 1.1 }] },
   hintText: {
+    marginBottom:20,
     color: "#666666",
     fontSize: 9,
     textAlign: "center",

@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Paintbrush } from "lucide-react-native";
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from "uuid";
 
 // 1. ADIM: Yazdığımız CanvasView'ı içeri aktar kanka
 import CanvasView from "./src/components/CanvasView";
@@ -20,12 +22,20 @@ export default function App() {
   const [nickname, setNickname] = useState("");
   const [tempName, setTempName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(null);
 
   useEffect(() => {
     checkUser();
   }, []);
 
   const checkUser = async () => {
+    let savedUserId = await AsyncStorage.getItem("user_id");
+    if (!savedUserId) {
+      savedUserId = uuidv4();
+      await AsyncStorage.setItem("user_id", savedUserId);
+    }
+    setUserId(savedUserId);
+
     const savedName = await AsyncStorage.getItem("user_nickname");
     if (savedName) setNickname(savedName);
     setLoading(false);
@@ -84,7 +94,7 @@ export default function App() {
   return (
     <GestureHandlerRootView>
       <View style={{ flex: 1, backgroundColor: "#0a0a0a"}}>
-        <CanvasView nickname={nickname} />
+        <CanvasView nickname={nickname} userId={userId} />
 
         {/* Temaya uyumlu debug butonu */}
         <TouchableOpacity
